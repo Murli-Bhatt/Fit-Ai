@@ -26,27 +26,43 @@ else:
     # Ensure active session state is safely loaded
     init_workout_session()
     
-    # Sidebar Branding
-    st.sidebar.markdown("<h2 style='text-align: center; color: #00FFCC; font-weight: 800; margin-bottom: 0px;'>🏋️‍♂️ FIT-AI</h2>", unsafe_allow_html=True)
-    st.sidebar.markdown("<p style='text-align: center; color: #9ca3af; font-size: 0.95rem; margin-top: 5px;'>Active Coach Session</p>", unsafe_allow_html=True)
-    st.sidebar.markdown("---")
-    
-    st.sidebar.markdown(f"👤 **User:** `{st.session_state.username}`")
-    
-    # Navigation Selector
+    # ── Sidebar Branding ──
+    st.sidebar.markdown(f"""
+    <div style="text-align:center; padding: 8px 0 12px 0;">
+        <div style="font-size:1.6rem; font-weight:800; background:linear-gradient(135deg,#00FFCC,#0099FF);
+                    -webkit-background-clip:text; -webkit-text-fill-color:transparent; letter-spacing:2px;">
+            🏋️ FIT-AI
+        </div>
+        <div style="font-size:0.72rem; color:#475569; font-weight:500;
+                    text-transform:uppercase; letter-spacing:1.5px; margin-top:3px;">
+            AI Gym Coach
+        </div>
+    </div>
+    <div style="background:rgba(0,255,204,0.05); border:1px solid rgba(0,255,204,0.12);
+                border-radius:8px; padding:8px 12px; margin-bottom:14px;
+                display:flex; align-items:center; gap:8px;">
+        <span style="font-size:1rem;">👤</span>
+        <div>
+            <div style="font-size:0.7rem; color:#475569; text-transform:uppercase; letter-spacing:0.8px;">Logged in as</div>
+            <div style="font-size:0.88rem; color:#00FFCC; font-weight:700;">{st.session_state.username}</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── Navigation Selector ──
     app_mode = st.sidebar.selectbox(
-        "Select Workspace",
-        ["Welcome Dashboard", "Real-Time Tracking", "Workout Logs & Stats"]
+        "Workspace",
+        ["Welcome Dashboard", "Real-Time Tracking", "Workout Logs & Stats"],
+        label_visibility="collapsed"
     )
     
     # Render exercise sidebar if tracking mode is active
     if app_mode == "Real-Time Tracking":
-        st.sidebar.markdown("---")
+        st.sidebar.markdown("<hr style='border-color:rgba(255,255,255,0.06); margin:10px 0;'>", unsafe_allow_html=True)
         render_exercise_sidebar()
-        
-    st.sidebar.markdown("<br>", unsafe_allow_html=True)
-    
-    if st.sidebar.button("🔓 Sign Out", use_container_width=True):
+
+    st.sidebar.markdown("<hr style='border-color:rgba(255,255,255,0.06); margin:10px 0;'>", unsafe_allow_html=True)
+    if st.sidebar.button("🔓 Sign Out", use_container_width=True, type="secondary"):
         st.session_state.logged_in = False
         st.session_state.username = ""
         st.success("Successfully logged out.")

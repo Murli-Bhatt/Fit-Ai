@@ -22,39 +22,38 @@ def render_exercise_sidebar():
     
     # 2. Render Inactive View: Setup Configurator
     if not st.session_state.workout_active:
-        st.sidebar.markdown("<div style='height: 45px;'></div>", unsafe_allow_html=True)
-        st.sidebar.markdown("<div class='form-heading'>Setup Session</div>", unsafe_allow_html=True)
-        
+        st.sidebar.markdown("<div class='form-heading'>⚙️ Setup Session</div>", unsafe_allow_html=True)
+
         exercise_list = [
-            "Squats", 
-            "Push-ups", 
-            "Bicep Curls", 
-            "Plank", 
-            "Lunges", 
+            "Squats",
+            "Push-ups",
+            "Bicep Curls",
+            "Plank",
+            "Lunges",
             "Shoulder Press"
         ]
-        
+
         selected_exercise = st.sidebar.selectbox(
-            "Exercise Type", 
+            "Exercise Type",
             exercise_list,
             index=exercise_list.index(st.session_state.active_exercise) if st.session_state.active_exercise in exercise_list else 0
         )
-        
-        target_sets = st.sidebar.number_input("Target Sets", min_value=1, max_value=8, value=int(st.session_state.target_sets), step=1)
-        target_reps = st.sidebar.number_input("Reps per Set", min_value=1, max_value=30, value=int(st.session_state.target_reps), step=1)
-        
-        voice_coaching = st.sidebar.toggle("Enable Voice Prompts", value=st.session_state.voice_coaching)
-        
-        st.sidebar.markdown("<br>", unsafe_allow_html=True)
-        if st.sidebar.button("🚀 Start Workout Session", use_container_width=True, type="primary"):
+
+        col1, col2 = st.sidebar.columns(2)
+        with col1:
+            target_sets = st.number_input("Sets", min_value=1, max_value=8, value=int(st.session_state.target_sets), step=1)
+        with col2:
+            target_reps = st.number_input("Reps / Set", min_value=1, max_value=30, value=int(st.session_state.target_reps), step=1)
+
+        voice_coaching = st.sidebar.toggle("🎙️ Voice Coaching", value=st.session_state.voice_coaching)
+
+        st.sidebar.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        if st.sidebar.button("🚀 Start Workout", use_container_width=True, type="primary"):
             start_workout_session(selected_exercise, target_sets, target_reps, voice_coaching)
             st.rerun()
             
     # 3. Render Active View: Real-Time Performance Analytics
     else:
-        # Pushes content down to avoid clipping under the Streamlit top bar
-        st.sidebar.markdown("<div style='height: 45px;'></div>", unsafe_allow_html=True)
-        
         # Display Glowing Active Workout Header
         st.sidebar.markdown(f"""
         <div style="background: linear-gradient(135deg, rgba(0, 255, 204, 0.1) 0%, rgba(0, 153, 255, 0.1) 100%); border: 1px solid rgba(0, 255, 204, 0.3); border-radius: 12px; padding: 12px; text-align: center; margin-bottom: 20px;">
