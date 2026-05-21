@@ -124,32 +124,56 @@ def trigger_rep_success():
 
 def finish_workout_session(completed_successfully=True):
     """
-    Concludes the current workout. Saves the stats inside the user's workout logs,
-    and returns state to config mode.
+    Concludes the current workout. Saves the stats to SQLite and
+    also keeps the in-memory log for the current session display.
     """
     init_workout_session()
-    
+
     if not st.session_state.workout_active:
         return
-        
+
     # Calculate total reps completed
-    total_reps = sum(s["completed_reps"] for s in st.session_state.set_history)
-    
-    # Save log
+    total_reps  = sum(s["completed_reps"] for s in st.session_state.set_history)
+    total_sets  = sum(1 for s in st.session_state.set_history if s["status"] == "Completed")
+    target_reps = st.session_state.target_reps
+    target_sets = st.session_state.target_sets
+
     if total_reps > 0:
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # ── Persist to SQLite ─────────────────────────────────────────────────
+        user_id = st.session_state.get("user_id")
+        if user_id:
+            try:
+                from services.persistence.exercise_repository import save_workout_log
+                save_workout_log(
+                    user_id       = user_id,
+                    exercise_name = st.session_state.active_exercise,
+                    total_reps    = total_reps,
+                    total_sets    = total_sets,
+                    target_reps   = target_reps,
+                    target_sets   = target_sets,
+                )
+            except Exception:
+                pass  # DB failure must never crash the UI
+
+        # ── Keep in-memory log for same-session display ───────────────────────
         new_log = {
-            "username": st.session_state.get("username", "gymcoach"),
-            "exercise": st.session_state.active_exercise,
-            "reps": total_reps,
-            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            "username":  st.session_state.get("username", ""),
+            "exercise":  st.session_state.active_exercise,
+            "reps":      total_reps,
+            "timestamp": now_str,
         }
         st.session_state.workout_logs.append(new_log)
-        
+
     # Reset active state
     st.session_state.workout_active = False
-    
+
     if completed_successfully:
-        st.session_state.feedback_cue = f"Session complete! You finished a total of {total_reps} reps of {st.session_state.active_exercise}."
+        st.session_state.feedback_cue = (
+            f"Session complete! You finished a total of {total_reps} reps "
+            f"of {st.session_state.active_exercise}."
+        )
     else:
         st.session_state.feedback_cue = f"Session stopped. Completed {total_reps} reps total."
 

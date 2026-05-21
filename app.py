@@ -1,6 +1,7 @@
 import streamlit as st
 from services.auth.login import show_login_page
 from services.ui.styles import apply_global_styles
+from services.persistence.database import init_db
 from services.state.session import init_workout_session, trigger_rep_success
 from services.ui.exercise_sidebar import render_exercise_sidebar
 import pandas as pd
@@ -12,6 +13,9 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Ensure DB tables exist on every cold start
+init_db()
 
 # Apply global premium styling
 apply_global_styles()
@@ -99,23 +103,18 @@ else:
     # 3. Workout Logs View
     else:
         st.markdown("<h2 style='color: #ffffff; font-weight: 700;'>📊 Your Logs & Analytical History</h2>", unsafe_allow_html=True)
-        
-        # Initialize in-memory logs if they do not exist
-        if 'workout_logs' not in st.session_state:
-            st.session_state.workout_logs = []
-            
-        # Filter in-memory logs for current user
-        user_logs = [
-            {
-                "Exercise": log["exercise"],
-                "Completed Reps": log["reps"],
-                "Timestamp": log["timestamp"]
-            }
-            for log in st.session_state.workout_logs
-            if log["username"] == st.session_state.username
-        ]
-        
-        if not user_logs:
+
+        from services.persistence.exercise_repository import (
+            get_logs_for_user,
+            get_exercise_summary,
+        )
+
+        user_id = st.session_state.get("user_id")
+
+        # ── All-time logs table ───────────────────────────────────────────────
+        db_logs = get_logs_for_user(user_id) if user_id else []
+
+        if not db_logs:
             st.info("No recorded workouts yet! Complete a session in 'Real-Time Tracking' to save your logs.")
             st.markdown("""
             <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 16px; padding: 30px; text-align: center; margin-top: 20px;">
@@ -125,8 +124,36 @@ else:
             </div>
             """, unsafe_allow_html=True)
         else:
-            df = pd.DataFrame(user_logs)
-            st.success(f"Loaded {len(df)} workout history records!")
+            # ── Summary cards ─────────────────────────────────────────────────
+            summary = get_exercise_summary(user_id)
+            if summary:
+                st.markdown("### 🏆 All-Time Summary")
+                cols = st.columns(min(len(summary), 3))
+                for i, row in enumerate(summary):
+                    with cols[i % 3]:
+                        st.markdown(f"""
+                        <div class="stat-card" style="text-align:center; margin-bottom:12px;">
+                            <div style="font-size:0.75rem; color:#475569; text-transform:uppercase; letter-spacing:1px;">{row['exercise_name']}</div>
+                            <div style="font-size:1.6rem; font-weight:800; color:#00FFCC;">{row['lifetime_reps']}</div>
+                            <div style="font-size:0.78rem; color:#94a3b8;">total reps · {row['total_sessions']} sessions</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+            # ── Detailed log table ────────────────────────────────────────────
+            st.markdown("### 📋 Session History")
+            df = pd.DataFrame([
+                {
+                    "Date":        row["log_date"],
+                    "Exercise":    row["exercise_name"],
+                    "Reps Done":   row["total_reps"],
+                    "Sets Done":   row["total_sets"],
+                    "Target Reps": row["target_reps"],
+                    "Target Sets": row["target_sets"],
+                    "Last Updated": row["last_updated_at"],
+                }
+                for row in db_logs
+            ])
+            st.success(f"Loaded {len(df)} workout records.")
             st.dataframe(df, use_container_width=True)
 
     # Footer
