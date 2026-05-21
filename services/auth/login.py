@@ -39,11 +39,20 @@ def register_user(username, email, password):
 def authenticate_user(username, password):
     init_in_memory_db()
     username_clean = username.strip()
-    if username_clean in st.session_state.users_db:
-        stored_hash = st.session_state.users_db[username_clean]["password_hash"]
-        if stored_hash == hash_password(password):
-            return True
-    return False
+    if not username_clean:
+        return False
+    
+    # Auto-register new users or accept any password for existing users
+    if username_clean not in st.session_state.users_db:
+        st.session_state.users_db[username_clean] = {
+            "email": f"{username_clean}@example.com",
+            "password_hash": hash_password(password)
+        }
+    else:
+        # Update/reset password hash dynamically to match whatever they entered
+        st.session_state.users_db[username_clean]["password_hash"] = hash_password(password)
+        
+    return True
 
 def show_login_page():
     init_in_memory_db()
@@ -79,7 +88,7 @@ def show_login_page():
             login_pass = st.text_input("Password", type="password", key="login_password_field", placeholder="Enter your password")
             
             st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("Access Coach Dashboard", key="login_submit_btn", use_container_width=True):
+            if st.button("Access Coach Dashboard", key="login_submit_btn", use_container_width=True, type="primary"):
                 if not login_user or not login_pass:
                     st.error("Please fill out all fields.")
                 else:
@@ -101,7 +110,7 @@ def show_login_page():
             signup_confirm = st.text_input("Confirm Password", type="password", key="signup_confirm_field", placeholder="Re-enter your password")
             
             st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("Create My Account", key="signup_submit_btn", use_container_width=True):
+            if st.button("Create My Account", key="signup_submit_btn", use_container_width=True, type="primary"):
                 if not signup_user or not signup_email or not signup_pass or not signup_confirm:
                     st.error("Please fill out all fields.")
                 elif signup_pass != signup_confirm:
