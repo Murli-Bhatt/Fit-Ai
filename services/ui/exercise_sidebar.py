@@ -36,20 +36,25 @@ def render_exercise_sidebar():
         selected_exercise = st.sidebar.selectbox(
             "Exercise Type",
             exercise_list,
-            index=exercise_list.index(st.session_state.active_exercise) if st.session_state.active_exercise in exercise_list else 0
+            key="active_exercise"
         )
 
         col1, col2 = st.sidebar.columns(2)
         with col1:
-            target_sets = st.number_input("Sets", min_value=1, max_value=8, value=int(st.session_state.target_sets), step=1)
+            target_sets = st.number_input("Sets", min_value=1, max_value=8, step=1, key="target_sets")
         with col2:
-            target_reps = st.number_input("Reps / Set", min_value=1, max_value=30, value=int(st.session_state.target_reps), step=1)
+            target_reps = st.number_input("Reps / Set", min_value=1, max_value=30, step=1, key="target_reps")
 
-        voice_coaching = st.sidebar.toggle("🎙️ Voice Coaching", value=st.session_state.voice_coaching)
+        voice_coaching = st.sidebar.toggle("🎙️ Voice Coaching", key="voice_coaching")
 
         st.sidebar.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
         if st.sidebar.button("🚀 Start Workout", use_container_width=True, type="primary"):
-            start_workout_session(selected_exercise, target_sets, target_reps, voice_coaching)
+            start_workout_session(
+                st.session_state.active_exercise,
+                st.session_state.target_sets,
+                st.session_state.target_reps,
+                st.session_state.voice_coaching
+            )
             st.rerun()
             
     # 3. Render Active View: Real-Time Performance Analytics

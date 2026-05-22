@@ -55,12 +55,34 @@ def start_workout_session(exercise, sets, reps, voice_coaching):
     init_workout_session()
     
     st.session_state.workout_active = True
-    st.session_state.active_exercise = exercise
-    st.session_state.target_sets = int(sets)
-    st.session_state.target_reps = int(reps)
+    
+    # Safely assign values to avoid modifying widget keys after instantiation
+    if st.session_state.get("active_exercise") != exercise:
+        try:
+            st.session_state.active_exercise = exercise
+        except Exception:
+            pass
+            
+    if st.session_state.get("target_sets") != int(sets):
+        try:
+            st.session_state.target_sets = int(sets)
+        except Exception:
+            pass
+            
+    if st.session_state.get("target_reps") != int(reps):
+        try:
+            st.session_state.target_reps = int(reps)
+        except Exception:
+            pass
+            
+    if st.session_state.get("voice_coaching") != voice_coaching:
+        try:
+            st.session_state.voice_coaching = voice_coaching
+        except Exception:
+            pass
+
     st.session_state.current_set = 1
     st.session_state.current_reps = 0
-    st.session_state.voice_coaching = voice_coaching
     st.session_state.feedback_cue = "Workout session started! Get into position."
     
     # Pre-populate empty set history table

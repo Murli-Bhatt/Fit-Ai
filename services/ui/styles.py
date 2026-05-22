@@ -3,8 +3,80 @@ import streamlit as st
 def apply_global_styles():
     """
     Applies the unified, premium dark-mode styling across the FIT-AI Gym Trainer.
+    Centres the login interface when logged out, and enables a fixed, scrollable
+    sidebar with custom scrollbars when logged in.
     """
-    st.markdown("""
+    is_logged_in = st.session_state.get("logged_in", False)
+    
+    # 1. Conditional Layout: Center login page or shift for fixed sidebar
+    if is_logged_in:
+        layout_css = """
+        /* Force sidebar to be expanded and visible at all times */
+        section[data-testid="stSidebar"] {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            transform: none !important;
+            margin-left: 0 !important;
+            width: 320px !important;
+            min-width: 320px !important;
+            max-width: 320px !important;
+            visibility: visible !important;
+            display: flex !important;
+            flex-direction: column !important;
+            z-index: 999999 !important;
+            background: linear-gradient(180deg, #060d1f 0%, #030712 100%) !important;
+            border-right: 1px solid rgba(0, 255, 204, 0.07) !important;
+            box-shadow: 4px 0 24px rgba(0, 0, 0, 0.6) !important;
+            overflow-y: auto !important;
+            height: 100vh !important;
+        }
+
+        /* Adjust main app container to respect the fixed sidebar */
+        div[data-testid="stAppViewContainer"] {
+            margin-left: 320px !important;
+            width: calc(100% - 320px) !important;
+        }
+
+        /* Enable vertical scrolling inside inner sidebar container */
+        section[data-testid="stSidebar"] > div:first-child,
+        div[data-testid="stSidebarUserContent"] {
+            overflow-y: auto !important;
+            height: 100% !important;
+        }
+
+        /* Completely hide scrollbars inside the sidebar to prevent visual clutter */
+        section[data-testid="stSidebar"]::-webkit-scrollbar,
+        section[data-testid="stSidebar"] *::-webkit-scrollbar {
+            display: none !important;
+            width: 0px !important;
+            height: 0px !important;
+            background: transparent !important;
+        }
+        section[data-testid="stSidebar"],
+        section[data-testid="stSidebar"] * {
+            -ms-overflow-style: none !important;
+            scrollbar-width: none !important;
+        }
+        """
+    else:
+        layout_css = """
+        /* Completely hide sidebar on login screen to allow centering */
+        section[data-testid="stSidebar"] {
+            display: none !important;
+            visibility: hidden !important;
+            width: 0px !important;
+        }
+
+        /* Center the login/registration interface */
+        div[data-testid="stAppViewContainer"] {
+            margin-left: 0px !important;
+            width: 100% !important;
+        }
+        """
+
+    # Global static CSS rules
+    static_css = """
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap');
 
@@ -25,8 +97,32 @@ def apply_global_styles():
             display: none !important;
         }
 
+        /* ── Hide Sidebar Collapse Controls ── */
+        [data-testid="collapsedControl"],
+        button[aria-label="Collapse sidebar"],
+        [data-testid="stSidebarCollapseButton"],
+        button[class*="sidebarCollapse"] {
+            display: none !important;
+            visibility: hidden !important;
+        }
+
+        /* Completely hide scrollbars globally while preserving mouse/touch scrolling */
+        ::-webkit-scrollbar {
+            display: none !important;
+            width: 0px !important;
+            height: 0px !important;
+            background: transparent !important;
+        }
+        * {
+            -ms-overflow-style: none !important;
+            scrollbar-width: none !important;
+        }
+    """
+
+    # Dynamic styling that follows the conditional styles
+    dynamic_css = """
         /* ══════════════════════════════
-           SIDEBAR
+           SIDEBAR STYLING
         ══════════════════════════════ */
         section[data-testid="stSidebar"] {
             background: linear-gradient(180deg, #060d1f 0%, #030712 100%) !important;
@@ -411,7 +507,9 @@ def apply_global_styles():
         .row-pending   { opacity: 0.6; }
 
     </style>
+    """
 
+    script_html = """
     <script>
     /*
      * Kill the search input that Streamlit renders inside every open selectbox.
@@ -443,5 +541,41 @@ def apply_global_styles():
         obs.observe(document.body, { childList: true, subtree: true });
         hideSearchInputs();
     })();
+
+    /*
+     * Auto-expand sidebar if it loads in a collapsed state (e.g. from local storage cache)
+     * and clear any remembered collapsed state to prevent layout bugs.
+     */
+    (function () {
+        function forceExpand() {
+            // Clear storage keys to prevent remembering collapsed state
+            for (var key in localStorage) {
+                if (key.toLowerCase().includes('sidebar')) {
+                    localStorage.removeItem(key);
+                }
+            }
+            for (var key in sessionStorage) {
+                if (key.toLowerCase().includes('sidebar')) {
+                    sessionStorage.removeItem(key);
+                }
+            }
+            
+            // Re-open if it is collapsed
+            var expandBtn = document.querySelector(
+                '[data-testid="collapsedControl"], ' +
+                '[data-testid="collapsedSidebarOption"], ' +
+                'button[aria-label="Expand sidebar"]'
+            );
+            if (expandBtn) {
+                expandBtn.click();
+            }
+        }
+        
+        forceExpand();
+        var obs = new MutationObserver(forceExpand);
+        obs.observe(document.body, { childList: true, subtree: true });
+    })();
     </script>
-    """, unsafe_allow_html=True)
+    """
+
+    st.markdown(static_css + layout_css + dynamic_css + script_html, unsafe_allow_html=True)
