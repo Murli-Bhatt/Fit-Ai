@@ -122,7 +122,7 @@ def trigger_rep_success():
     curr_set_idx = st.session_state.current_set - 1
     
     # Safely guard indices
-    if curr_set_idx >= len(st.session_state.set_history):
+    if curr_set_idx < 0 or curr_set_idx >= len(st.session_state.set_history):
         return
         
     st.session_state.current_reps += 1
@@ -136,7 +136,8 @@ def trigger_rep_success():
         if st.session_state.current_set < st.session_state.target_sets:
             st.session_state.current_set += 1
             st.session_state.current_reps = 0
-            st.session_state.set_history[st.session_state.current_set - 1]["status"] = "Active"
+            if st.session_state.current_set - 1 < len(st.session_state.set_history):
+                st.session_state.set_history[st.session_state.current_set - 1]["status"] = "Active"
             st.session_state.feedback_cue = f"Set {st.session_state.current_set - 1} completed! Breathe and start Set {st.session_state.current_set}."
         else:
             # Entire workout completed!
@@ -190,6 +191,8 @@ def finish_workout_session(completed_successfully=True):
 
     # Reset active state
     st.session_state.workout_active = False
+    if "camera_active" in st.session_state:
+        st.session_state.camera_active = False
 
     if completed_successfully:
         st.session_state.feedback_cue = (

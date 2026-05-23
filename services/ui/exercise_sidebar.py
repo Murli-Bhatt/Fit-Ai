@@ -33,27 +33,52 @@ def render_exercise_sidebar():
             "Shoulder Press"
         ]
 
+        # Safeguard index boundaries when fetching from session state
+        try:
+            default_idx = exercise_list.index(st.session_state.active_exercise)
+        except ValueError:
+            default_idx = 0
+
         selected_exercise = st.sidebar.selectbox(
             "Exercise Type",
             exercise_list,
-            key="active_exercise"
+            index=default_idx,
+            key="widget_active_exercise"
         )
 
         col1, col2 = st.sidebar.columns(2)
         with col1:
-            target_sets = st.number_input("Sets", min_value=1, max_value=8, step=1, key="target_sets")
+            target_sets = st.number_input(
+                "Sets", 
+                min_value=1, 
+                max_value=8, 
+                value=int(st.session_state.target_sets),
+                step=1, 
+                key="widget_target_sets"
+            )
         with col2:
-            target_reps = st.number_input("Reps / Set", min_value=1, max_value=30, step=1, key="target_reps")
+            target_reps = st.number_input(
+                "Reps / Set", 
+                min_value=1, 
+                max_value=30, 
+                value=int(st.session_state.target_reps),
+                step=1, 
+                key="widget_target_reps"
+            )
 
-        voice_coaching = st.sidebar.toggle("🎙️ Voice Coaching", key="voice_coaching")
+        voice_coaching = st.sidebar.toggle(
+            "🎙️ Voice Coaching", 
+            value=bool(st.session_state.voice_coaching),
+            key="widget_voice_coaching"
+        )
 
         st.sidebar.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
         if st.sidebar.button("🚀 Start Workout", use_container_width=True, type="primary"):
             start_workout_session(
-                st.session_state.active_exercise,
-                st.session_state.target_sets,
-                st.session_state.target_reps,
-                st.session_state.voice_coaching
+                exercise=st.session_state.widget_active_exercise,
+                sets=st.session_state.widget_target_sets,
+                reps=st.session_state.widget_target_reps,
+                voice_coaching=st.session_state.widget_voice_coaching
             )
             st.rerun()
             
