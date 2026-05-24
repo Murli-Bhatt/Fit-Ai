@@ -160,14 +160,51 @@ else:
                         # Sync angles so sidebar gauges react to movement
                         st.session_state.simulated_angles[exercise_key] = ctx.video_processor.angles
                         
-                        # Sync AI coaching cues
+                        # Always synchronize real-time posture feedback so that voice coach/UI reads it
                         st.session_state.feedback_cue = ctx.video_processor.feedback
                         
-                        # Sync reps completed (triggers SQLite save and full sidebar reload)
+                        # Sync reps completed (triggers SQLite save, voice coaching query, and full reload)
                         if ctx.video_processor.new_rep_detected:
                             ctx.video_processor.new_rep_detected = False
+                            
+                            # Capture the warnings compiled by the video processor during this rep
+                            rep_errors = list(getattr(ctx.video_processor, "current_rep_warnings", []))
+                            if hasattr(ctx.video_processor, "current_rep_warnings"):
+                                ctx.video_processor.current_rep_warnings = []
+                                
+                            # Increment rep success in session history
                             trigger_rep_success()
+                            
+                            # Trigger voice coaching feedback only upon rep completion
+                            from services.coaching.groq_coach import trigger_coaching_audio
+                            audio_b64 = trigger_coaching_audio(
+                                exercise_name=exercise_name,
+                                current_set=st.session_state.current_set,
+                                current_reps=st.session_state.current_reps,
+                                target_sets=st.session_state.target_sets,
+                                target_reps=st.session_state.target_reps,
+                                rep_errors=rep_errors,
+                                angles_dict=st.session_state.simulated_angles[exercise_key]
+                            )
+                            if audio_b64:
+                                st.session_state.voice_audio_base64 = audio_b64
+                                st.session_state.audio_id = st.session_state.get("audio_id", 0) + 1
+                                
                             st.rerun()
+
+                        # Live camera coaching feedback banner displayed under the video stream
+                        st.markdown(f"""
+                        <div style="background: rgba(0, 255, 204, 0.05); border: 1px solid rgba(0, 255, 204, 0.12); border-radius: 8px; padding: 12px; margin-top: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+                            <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(0, 255, 204, 0.1); padding-bottom: 8px; margin-bottom: 8px;">
+                                <div style="font-size: 0.88rem; color: #00FFCC; font-weight: 700;">🎥 Live AI Biometrics Active</div>
+                                <div style="font-size: 0.88rem; color: #ffffff; font-weight: 600;">Active Set: <span style="color: #00FFCC;">{st.session_state.current_reps}/{st.session_state.target_reps} reps (Set {st.session_state.current_set})</span></div>
+                            </div>
+                            <div style="font-size: 0.88rem; color: #cbd5e1; font-weight: 400; display: flex; align-items: center; gap: 6px;">
+                                <span style="font-size: 1rem;">🎙️</span>
+                                <span><b>Coach Feedback:</b> "{st.session_state.get('feedback_cue', '')}"</span>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
             else:
                 # 📤 Upload Workout Video Mode
                 st.markdown(f"### 📤 Upload Workout Video: `{exercise_name}`")
@@ -189,30 +226,60 @@ else:
                         
                     st.success("Video successfully loaded! Ready for AI Biometric Coaching analysis.")
                     
+                    # Initialize session states for video analysis
+                    if "video_analysis_running" not in st.session_state:
+                        st.session_state.video_analysis_running = False
+                    if "video_frame_index" not in st.session_state:
+                        st.session_state.video_frame_index = 0
+                    if "video_detector" not in st.session_state:
+                        st.session_state.video_detector = None
+                    if "video_prev_reps" not in st.session_state:
+                        st.session_state.video_prev_reps = 0
+
                     st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
-                    if st.button("⚡ Run AI Biometrics Coach", use_container_width=True, type="primary"):
+                    if st.session_state.video_analysis_running:
+                        if st.button("🛑 Cancel Video Analysis", use_container_width=True, type="secondary"):
+                            st.session_state.video_analysis_running = False
+                            st.session_state.video_frame_index = 0
+                            st.session_state.video_detector = None
+                            st.session_state.video_prev_reps = 0
+                            st.rerun()
+                    else:
+                        if st.button("⚡ Run AI Biometrics Coach", use_container_width=True, type="primary"):
+                            st.session_state.video_analysis_running = True
+                            st.session_state.video_frame_index = 0
+                            st.session_state.video_detector = None
+                            st.session_state.video_prev_reps = 0
+                            st.rerun()
+                    
+                    if st.session_state.video_analysis_running:
                         image_placeholder = st.empty()
                         status_placeholder = st.empty()
+                        voice_audio_placeholder = st.empty() # Custom audio placeholder for uploaded video speech feedback
                         
                         from services.vision.video_processor import process_uploaded_video
                         
                         try:
-                            # Run video analysis paced loop
+                            # Run video analysis paced loop with voice feedback capability
                             reps_done, final_angles = process_uploaded_video(
                                 temp_filename,
                                 exercise_name,
                                 image_placeholder,
-                                status_placeholder
+                                status_placeholder,
+                                voice_audio_placeholder
                             )
                             
                             # Safely clean up temporary file
                             if os.path.exists(temp_filename):
                                 os.remove(temp_filename)
                                 
-                            # Increment rep success in session history for every completed rep
+                            # Reset analysis states since video completed successfully
+                            st.session_state.video_analysis_running = False
+                            st.session_state.video_frame_index = 0
+                            st.session_state.video_detector = None
+                            st.session_state.video_prev_reps = 0
+                            
                             if reps_done > 0:
-                                for _ in range(reps_done):
-                                    trigger_rep_success()
                                 st.success(f"Analysis Complete! Successfully recorded {reps_done} repetitions to active set history.")
                             else:
                                 st.warning("Analysis finished. No complete repetitions were detected. Try a clearer video angle!")
@@ -223,6 +290,13 @@ else:
                             import traceback
                             st.error(f"An error occurred during video analysis: {str(e)}")
                             st.code(traceback.format_exc(), language="python")
+                            
+                            # Reset states on error
+                            st.session_state.video_analysis_running = False
+                            st.session_state.video_frame_index = 0
+                            st.session_state.video_detector = None
+                            st.session_state.video_prev_reps = 0
+                            
                             if os.path.exists(temp_filename):
                                 os.remove(temp_filename)
 
@@ -282,6 +356,25 @@ else:
             ])
             st.success(f"Loaded {len(df)} workout records.")
             st.dataframe(df, use_container_width=True)
+
+    # Render persistent voice feedback player so that browser plays it fully to completion across Streamlit reruns
+    audio_payload = st.session_state.get("voice_audio_base64", "")
+    audio_id = st.session_state.get("audio_id", 0)
+    last_played = st.session_state.get("last_played_audio_id", -1)
+    
+    if audio_payload:
+        autoplay_attr = "autoplay" if (audio_id > last_played) else ""
+        if audio_id > last_played:
+            st.session_state.last_played_audio_id = audio_id
+            
+        st.markdown(
+            f"""
+            <audio {autoplay_attr} style="display:none;">
+                <source src="data:audio/mp3;base64,{audio_payload}" type="audio/mp3">
+            </audio>
+            """,
+            unsafe_allow_html=True
+        )
 
     # Footer
     st.markdown("""

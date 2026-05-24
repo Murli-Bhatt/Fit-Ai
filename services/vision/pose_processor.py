@@ -1,8 +1,6 @@
 import cv2
 import av
 import os
-import time
-import numpy as np
 import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
@@ -26,6 +24,10 @@ class PoseVideoProcessor:
         self.feedback = "Positioning camera... align your full body."
         self.angles = {}
         self.new_rep_detected = False
+        self.new_feedback_detected = False
+        self.last_spoken_time = 0.0
+        self.last_spoken_feedback = ""
+        self.current_rep_warnings = []
         
         # Initialize selected exercise detector
         if exercise_name == "Squats":
@@ -49,20 +51,10 @@ class PoseVideoProcessor:
             
         # Absolute path resolution for the MediaPipe model file
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        model_path = os.path.abspath(os.path.join(current_dir, "..", "..", "ml_models", "pose_landmarker_full.task"))
-        
-        try:
-            base_options = python.BaseOptions(model_asset_path=model_path)
-            options = vision.PoseLandmarkerOptions(
-                base_options=base_options,
-                running_mode=vision.RunningMode.IMAGE,
-                output_segmentation_masks=False
-            )
-            self.mp_detector = vision.PoseLandmarker.create_from_options(options)
-            self.mp_initialized = True
-        except Exception as e:
-            self.mp_initialized = False
-            self.feedback = f"Error loading pose_landmarker_full.task: {str(e)}"
+        self.model_path = os.path.abspath(os.path.join(current_dir, "..", "..", "ml_models", "pose_landmarker_full.task"))
+        self.mp_initialized = False
+        self.mp_detector = None
+        self.model_error_occurred = False
             
     def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
         """
@@ -70,10 +62,29 @@ class PoseVideoProcessor:
         overlays biometrics & HUD details, and returns the modified frame.
         """
         img = frame.to_ndarray(format="bgr24")
-        h, w, c = img.shape
         
-        # Verify model loaded successfully
-        if not self.mp_initialized:
+        # Mirror the frame horizontally so that the user's left/right matches real-world anatomy
+        # This resolves the live webcam left/right mismatch issue perfectly!
+        img = cv2.flip(img, 1)
+        
+        h, w, _ = img.shape
+        
+        # Verify model loaded successfully or initialize on first frame in the background WebRTC thread
+        if not self.mp_initialized and not self.model_error_occurred:
+            try:
+                base_options = python.BaseOptions(model_asset_path=self.model_path)
+                options = vision.PoseLandmarkerOptions(
+                    base_options=base_options,
+                    running_mode=vision.RunningMode.IMAGE,
+                    output_segmentation_masks=False
+                )
+                self.mp_detector = vision.PoseLandmarker.create_from_options(options)
+                self.mp_initialized = True
+            except Exception as e:
+                self.model_error_occurred = True
+                self.feedback = f"Error loading pose_landmarker_full.task: {str(e)}"
+                
+        if self.model_error_occurred or not self.mp_initialized:
             # Draw eye-catching red warning box
             cv2.rectangle(img, (10, 10), (w - 10, 90), (0, 0, 200), -1)
             cv2.putText(img, "FIT-AI VISION ERROR", (20, 45), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
@@ -101,11 +112,19 @@ class PoseVideoProcessor:
                     self.reps = self.detector.reps
                     self.new_rep_detected = True
                     
+                # Collect warnings observed during the current rep execution
+                feedback_lower = self.detector.feedback.lower()
+                is_warning = any(word in feedback_lower for word in ["warning", "check", "sag", "lean", "feet", "arm", "positioning", "wrist"])
+                if is_warning:
+                    warning_text = self.detector.feedback
+                    if warning_text not in self.current_rep_warnings:
+                        self.current_rep_warnings.append(warning_text)
+                    
                 # 3. Draw custom neon pose skeleton connection lines
                 self.draw_skeleton(img, landmarks)
                 
                 # 4. Draw high-fidelity HUD card overlays
-                self.draw_hud(img, self.reps, self.detector.stage, self.detector.feedback)
+                self.draw_hud(img, self.reps, self.detector.stage, self.detector.feedback, self.angles)
             else:
                 self.feedback = "Positioning check: step back so your full body is visible."
                 self.draw_hud(img, self.reps, "Wait", self.feedback)
@@ -121,7 +140,7 @@ class PoseVideoProcessor:
         """
         Draws glowing connection lines and high-contrast joints.
         """
-        h, w, c = img.shape
+        h, w, _ = img.shape
         connections = [
             # Torso / Core alignment
             (11, 12), (11, 23), (12, 24), (23, 24),
@@ -148,11 +167,11 @@ class PoseVideoProcessor:
                 # Draw electric blue connection lines
                 cv2.line(img, points[p1], points[p2], (255, 153, 0), 2, cv2.LINE_AA) # BGR Electric Blue
                 
-    def draw_hud(self, img, reps, stage, feedback):
+    def draw_hud(self, img, reps, stage, feedback, angles=None):
         """
         Draws a modern, premium translucent HUD overlay directly on the frame.
         """
-        h, w, c = img.shape
+        h, w, _ = img.shape
         
         # 1. Compile glassmorphic overlay shapes
         overlay = img.copy()
@@ -179,6 +198,11 @@ class PoseVideoProcessor:
         # Stage indicator
         cv2.putText(img, f"STAGE: {stage.upper()}", (w - 330, 42), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1, cv2.LINE_AA)
         
+        # Draw real-time joint angles in the footer bar above the feedback
+        if angles:
+            angles_str = "  ".join(f"{k.upper().replace('_', ' ')}: {float(v):.1f}°" for k, v in angles.items() if isinstance(v, (int, float)))
+            cv2.putText(img, angles_str, (15, h - 40), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (204, 255, 0), 1, cv2.LINE_AA)
+
         # 3. Handle color coding for coaching feedback
         text_color = (255, 255, 255) # White default
         if "Warning" in feedback or "Form" in feedback or "Align" in feedback or "Cheating" in feedback:
@@ -186,4 +210,4 @@ class PoseVideoProcessor:
         elif "Excellent" in feedback or "Good" in feedback or "Perfect" in feedback or "Splendid" in feedback:
             text_color = (204, 255, 0) # Neon green for success
             
-        cv2.putText(img, feedback, (15, h - 25), cv2.FONT_HERSHEY_SIMPLEX, 0.55, text_color, 1, cv2.LINE_AA)
+        cv2.putText(img, feedback, (15, h - 18), cv2.FONT_HERSHEY_SIMPLEX, 0.52, text_color, 1, cv2.LINE_AA)

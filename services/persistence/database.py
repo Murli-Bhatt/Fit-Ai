@@ -6,7 +6,6 @@ Handles DB file path, connection creation, and schema initialisation.
 """
 
 import sqlite3
-import os
 from pathlib import Path
 
 # ── DB file lives at project root / data / data.db ───────────────────────────

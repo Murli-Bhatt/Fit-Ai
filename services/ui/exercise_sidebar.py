@@ -39,7 +39,7 @@ def render_exercise_sidebar():
         except ValueError:
             default_idx = 0
 
-        selected_exercise = st.sidebar.selectbox(
+        st.sidebar.selectbox(
             "Exercise Type",
             exercise_list,
             index=default_idx,
@@ -48,7 +48,7 @@ def render_exercise_sidebar():
 
         col1, col2 = st.sidebar.columns(2)
         with col1:
-            target_sets = st.number_input(
+            st.number_input(
                 "Sets", 
                 min_value=1, 
                 max_value=8, 
@@ -57,7 +57,7 @@ def render_exercise_sidebar():
                 key="widget_target_sets"
             )
         with col2:
-            target_reps = st.number_input(
+            st.number_input(
                 "Reps / Set", 
                 min_value=1, 
                 max_value=30, 
@@ -66,7 +66,7 @@ def render_exercise_sidebar():
                 key="widget_target_reps"
             )
 
-        voice_coaching = st.sidebar.toggle(
+        st.sidebar.toggle(
             "🎙️ Voice Coaching", 
             value=bool(st.session_state.voice_coaching),
             key="widget_voice_coaching"
@@ -86,11 +86,19 @@ def render_exercise_sidebar():
     else:
         # Display Glowing Active Workout Header
         st.sidebar.markdown(f"""
-        <div style="background: linear-gradient(135deg, rgba(0, 255, 204, 0.1) 0%, rgba(0, 153, 255, 0.1) 100%); border: 1px solid rgba(0, 255, 204, 0.3); border-radius: 12px; padding: 12px; text-align: center; margin-bottom: 20px;">
+        <div style="background: linear-gradient(135deg, rgba(0, 255, 204, 0.1) 0%, rgba(0, 153, 255, 0.1) 100%); border: 1px solid rgba(0, 255, 204, 0.3); border-radius: 12px; padding: 12px; text-align: center; margin-bottom: 12px;">
             <div style="font-size: 0.75rem; color: #00FFCC; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px;">Active Workout</div>
             <div style="font-size: 1.4rem; font-weight: 800; color: #ffffff; margin-top: 3px;">{st.session_state.active_exercise}</div>
         </div>
         """, unsafe_allow_html=True)
+        
+        # Real-time toggle to enable/disable voice coaching during session
+        active_voice = st.sidebar.toggle(
+            "🎙️ Voice Coaching", 
+            value=bool(st.session_state.voice_coaching),
+            key="widget_active_voice_coaching"
+        )
+        st.session_state.voice_coaching = active_voice
         
         # A. Progress Metric Card (Rendered above biometrics)
         render_progress_metric(
@@ -105,21 +113,10 @@ def render_exercise_sidebar():
         exercise_key = st.session_state.active_exercise.lower().replace(" ", "_").replace("-", "_")
         angles = st.session_state.simulated_angles.get(exercise_key, {})
         
-        # Sidebar container for metrics
-        metrics_container = st.sidebar.container()
-        with metrics_container:
-            if st.session_state.active_exercise == "Squats":
-                render_squat_metrics(angles)
-            elif st.session_state.active_exercise == "Push-ups":
-                render_pushup_metrics(angles)
-            elif st.session_state.active_exercise == "Bicep Curls":
-                render_bicep_curl_metrics(angles)
-            elif st.session_state.active_exercise == "Plank":
-                render_plank_metrics(angles)
-            elif st.session_state.active_exercise == "Lunges":
-                render_lunge_metrics(angles)
-            elif st.session_state.active_exercise == "Shoulder Press":
-                render_shoulder_press_metrics(angles)
+        # Save metrics container to session state so video loop can write to it dynamically in real time!
+        st.session_state.metrics_placeholder = st.sidebar.empty()
+        with st.session_state.metrics_placeholder.container():
+            render_exercise_metrics(st.session_state.active_exercise, angles)
                 
         st.sidebar.markdown("<hr style='border-color: rgba(255,255,255,0.06); margin: 15px 0;'>", unsafe_allow_html=True)
         
@@ -194,3 +191,20 @@ def render_exercise_sidebar():
             stop_workout_session()
             st.success("Session completed and saved.")
             st.rerun()
+
+def render_exercise_metrics(exercise_name, angles):
+    """
+    Utility to map specific exercises to their rendering methods.
+    """
+    if exercise_name == "Squats":
+        render_squat_metrics(angles)
+    elif exercise_name == "Push-ups":
+        render_pushup_metrics(angles)
+    elif exercise_name == "Bicep Curls":
+        render_bicep_curl_metrics(angles)
+    elif exercise_name == "Plank":
+        render_plank_metrics(angles)
+    elif exercise_name == "Lunges":
+        render_lunge_metrics(angles)
+    elif exercise_name == "Shoulder Press":
+        render_shoulder_press_metrics(angles)

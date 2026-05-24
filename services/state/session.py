@@ -25,6 +25,22 @@ def init_workout_session():
         st.session_state.feedback_cue = "Ready to start! Maintain slow and controlled movements."
     if 'set_history' not in st.session_state:
         st.session_state.set_history = []
+        
+    # Voice feedback state variables
+    if 'last_spoken_rep' not in st.session_state:
+        st.session_state.last_spoken_rep = 0
+    if 'last_spoken_set' not in st.session_state:
+        st.session_state.last_spoken_set = 0
+    if 'last_spoken_feedback' not in st.session_state:
+        st.session_state.last_spoken_feedback = ""
+    if 'last_spoken_time' not in st.session_state:
+        st.session_state.last_spoken_time = 0.0
+    if 'voice_audio_base64' not in st.session_state:
+        st.session_state.voice_audio_base64 = ""
+    if 'audio_id' not in st.session_state:
+        st.session_state.audio_id = 0
+    if 'last_played_audio_id' not in st.session_state:
+        st.session_state.last_played_audio_id = -1
     
     # Persistent analytics logs
     if 'workout_logs' not in st.session_state:
@@ -84,6 +100,15 @@ def start_workout_session(exercise, sets, reps, voice_coaching):
     st.session_state.current_set = 1
     st.session_state.current_reps = 0
     st.session_state.feedback_cue = "Workout session started! Get into position."
+    
+    # Reset voice coaching boundaries for the new session
+    st.session_state.last_spoken_rep = 0
+    st.session_state.last_spoken_set = 0
+    st.session_state.last_spoken_feedback = ""
+    st.session_state.last_spoken_time = 0.0
+    st.session_state.voice_audio_base64 = ""
+    st.session_state.audio_id = 0
+    st.session_state.last_played_audio_id = -1
     
     # Pre-populate empty set history table
     st.session_state.set_history = [

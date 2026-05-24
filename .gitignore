@@ -19,3 +19,15 @@ data/
 # OS files
 .DS_Store
 Thumbs.db
+
+# VS Code environment settings (local config)
+.vscode/
+
+# User uploaded or generated temporary media files (videos/audios)
+*.mp4
+*.avi
+*.mov
+*.wav
+*.mp3
+temp_workout.mp4
+

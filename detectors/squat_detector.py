@@ -81,7 +81,6 @@ class SquatDetector(BaseDetector):
 
         # Select knee with maximum visibility
         if left_knee.visibility > right_knee.visibility:
-            selected_side = "Left"
             knee_angle = selected_knee
             # Spine/Torso check: Angle formed by shoulder, hip, knee on left side
             hip_angle = self.calculate_angle(
@@ -90,7 +89,6 @@ class SquatDetector(BaseDetector):
                 (left_knee.x, left_knee.y)
             )
         else:
-            selected_side = "Right"
             knee_angle = selected_knee
             # Spine/Torso check: Angle formed by shoulder, hip, knee on right side
             hip_angle = self.calculate_angle(

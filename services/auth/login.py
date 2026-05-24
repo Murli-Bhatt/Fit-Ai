@@ -32,7 +32,7 @@ def show_login_page():
     if "user_id" not in st.session_state:
         st.session_state.user_id = None
 
-    col_left, col_mid, col_right = st.columns([1, 2, 1])
+    _, col_mid, _ = st.columns([1, 2, 1])
 
     with col_mid:
         st.markdown("""
