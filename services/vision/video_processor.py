@@ -243,7 +243,7 @@ def process_uploaded_video(file_path, exercise_name, image_placeholder, status_p
             # Trigger native offline SAPI5 voice coaching feedback (completely immune to DOM updates and thread issues!)
             try:
                 from services.coaching.groq_coach import trigger_coaching_audio
-                trigger_coaching_audio(
+                audio_b64 = trigger_coaching_audio(
                     exercise_name=exercise_name,
                     current_set=st.session_state.current_set,
                     current_reps=st.session_state.current_reps,
@@ -252,6 +252,9 @@ def process_uploaded_video(file_path, exercise_name, image_placeholder, status_p
                     rep_errors=rep_errors,
                     angles_dict=final_angles
                 )
+                if audio_b64:
+                    st.session_state.voice_audio_base64 = audio_b64
+                    st.session_state.audio_id = st.session_state.get("audio_id", 0) + 1
             except Exception as e:
                 print(f"Voice coaching trigger failed: {str(e)}")
 

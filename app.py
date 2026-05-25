@@ -421,3 +421,15 @@ else:
         FIT-AI Gym Trainer &copy; 2026. Custom Built with Streamlit, SQLite & MediaPipe.
     </div>
     """, unsafe_allow_html=True)
+
+    # HTML5 Browser Audio Autoplay Bridge (Crucial fallback for Streamlit Cloud Linux/Docker deployments!)
+    import platform
+    if platform.system() != 'Windows':
+        if st.session_state.get("voice_audio_base64") and st.session_state.get("audio_id", 0) != st.session_state.get("last_played_audio_id", -1):
+            audio_html = f"""
+            <audio autoplay="true" style="display:none;">
+                <source src="data:audio/mp3;base64,{st.session_state.voice_audio_base64}" type="audio/mp3">
+            </audio>
+            """
+            st.markdown(audio_html, unsafe_allow_html=True)
+            st.session_state.last_played_audio_id = st.session_state.audio_id
