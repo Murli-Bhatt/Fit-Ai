@@ -1,6 +1,7 @@
 import cv2
 import av
 import os
+import time
 import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
@@ -75,7 +76,7 @@ class PoseVideoProcessor:
                 base_options = python.BaseOptions(model_asset_path=self.model_path)
                 options = vision.PoseLandmarkerOptions(
                     base_options=base_options,
-                    running_mode=vision.RunningMode.IMAGE,
+                    running_mode=vision.RunningMode.VIDEO,
                     output_segmentation_masks=False
                 )
                 self.mp_detector = vision.PoseLandmarker.create_from_options(options)
@@ -96,7 +97,11 @@ class PoseVideoProcessor:
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_image)
         
         try:
-            result = self.mp_detector.detect(mp_image)
+            if not hasattr(self, 'start_time_pc'):
+                self.start_time_pc = time.perf_counter()
+            timestamp_ms = int((time.perf_counter() - self.start_time_pc) * 1000)
+            
+            result = self.mp_detector.detect_for_video(mp_image, timestamp_ms)
             
             if result.pose_landmarks and len(result.pose_landmarks) > 0:
                 landmarks = result.pose_landmarks[0]

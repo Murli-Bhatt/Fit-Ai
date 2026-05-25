@@ -100,37 +100,40 @@ def render_exercise_sidebar():
         )
         st.session_state.voice_coaching = active_voice
         
-        # A. Progress Metric Card (Rendered above biometrics)
-        render_progress_metric(
-            st.session_state.set_history, 
-            st.session_state.current_set, 
-            st.session_state.current_reps, 
-            st.session_state.target_reps
-        )
+        # A. Progress Metric Card Placeholder
+        st.session_state.progress_placeholder = st.sidebar.empty()
+        with st.session_state.progress_placeholder.container():
+            render_progress_metric(
+                st.session_state.set_history, 
+                st.session_state.current_set, 
+                st.session_state.current_reps, 
+                st.session_state.target_reps
+            )
         st.sidebar.markdown("<hr style='border-color: rgba(255,255,255,0.06); margin: 15px 0;'>", unsafe_allow_html=True)
         
-        # B. Load Specific Posture Metrics Widget
+        # B. Load Specific Posture Metrics Widget Placeholder
         exercise_key = st.session_state.active_exercise.lower().replace(" ", "_").replace("-", "_")
         angles = st.session_state.simulated_angles.get(exercise_key, {})
         
-        # Save metrics container to session state so video loop can write to it dynamically in real time!
         st.session_state.metrics_placeholder = st.sidebar.empty()
         with st.session_state.metrics_placeholder.container():
             render_exercise_metrics(st.session_state.active_exercise, angles)
                 
         st.sidebar.markdown("<hr style='border-color: rgba(255,255,255,0.06); margin: 15px 0;'>", unsafe_allow_html=True)
         
-        # C. Coaching Voice Cue Bubble
-        st.sidebar.markdown(f"""
-        <div class="speech-box">
-            <span style="font-size: 0.95rem; font-weight: 700; color: #00FFCC; display: flex; align-items: center; gap: 6px;">
-                🎙️ AI Coach Cue
-            </span>
-            <p style="color: #cbd5e1; font-size: 0.85rem; font-weight: 300; margin: 6px 0 0 0; line-height: 1.4;">
-                "{st.session_state.feedback_cue}"
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
+        # C. Coaching Voice Cue Bubble Placeholder
+        st.session_state.feedback_placeholder = st.sidebar.empty()
+        with st.session_state.feedback_placeholder.container():
+            st.markdown(f"""
+            <div class="speech-box">
+                <span style="font-size: 0.95rem; font-weight: 700; color: #00FFCC; display: flex; align-items: center; gap: 6px;">
+                    🎙️ AI Coach Cue
+                </span>
+                <p style="color: #cbd5e1; font-size: 0.85rem; font-weight: 300; margin: 6px 0 0 0; line-height: 1.4;">
+                    "{st.session_state.feedback_cue}"
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
         
         st.sidebar.markdown("<hr style='border-color: rgba(255,255,255,0.06); margin: 15px 0;'>", unsafe_allow_html=True)
         

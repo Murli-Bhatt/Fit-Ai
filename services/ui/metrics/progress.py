@@ -33,4 +33,4 @@ def render_progress_metric(set_history, current_set, current_reps, target_reps):
         </div>
     </div>
     """
-    st.sidebar.markdown(progress_html, unsafe_allow_html=True)
+    st.markdown(progress_html, unsafe_allow_html=True)

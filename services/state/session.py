@@ -99,7 +99,6 @@ def start_workout_session(exercise, sets, reps, voice_coaching):
 
     st.session_state.current_set = 1
     st.session_state.current_reps = 0
-    st.session_state.feedback_cue = "Workout session started! Get into position."
     
     # Reset voice coaching boundaries for the new session
     st.session_state.last_spoken_rep = 0
@@ -109,6 +108,22 @@ def start_workout_session(exercise, sets, reps, voice_coaching):
     st.session_state.voice_audio_base64 = ""
     st.session_state.audio_id = 0
     st.session_state.last_played_audio_id = -1
+
+    st.session_state.feedback_cue = f"Great! Let's complete {sets} sets of {reps} reps of {exercise}. Get ready!"
+    
+    if voice_coaching:
+        try:
+            # Play natively on system audio (100% immune to browser/DOM updates!)
+            from services.coaching.groq_coach import speak_text_locally
+            speak_text_locally(st.session_state.feedback_cue)
+            
+            from services.coaching.text_to_speech import text_to_speech_base64
+            audio_b64 = text_to_speech_base64(st.session_state.feedback_cue)
+            if audio_b64:
+                st.session_state.voice_audio_base64 = audio_b64
+                st.session_state.audio_id = st.session_state.get("audio_id", 0) + 1
+        except Exception as e:
+            print(f"Failed to generate welcome voice cue: {str(e)}")
     
     # Pre-populate empty set history table
     st.session_state.set_history = [
@@ -165,8 +180,8 @@ def trigger_rep_success():
                 st.session_state.set_history[st.session_state.current_set - 1]["status"] = "Active"
             st.session_state.feedback_cue = f"Set {st.session_state.current_set - 1} completed! Breathe and start Set {st.session_state.current_set}."
         else:
-            # Entire workout completed!
-            finish_workout_session(completed_successfully=True)
+            # Entire workout target reached, but keep active to allow extra/bonus reps!
+            st.session_state.feedback_cue = f"Target reached! Outstanding effort! Let's push for an extra bonus rep!"
     else:
         st.session_state.feedback_cue = f"Good rep! {st.session_state.current_reps}/{st.session_state.target_reps} completed in Set {st.session_state.current_set}."
 
@@ -221,14 +236,34 @@ def finish_workout_session(completed_successfully=True):
 
     if completed_successfully:
         st.session_state.feedback_cue = (
-            f"Session complete! You finished a total of {total_reps} reps "
-            f"of {st.session_state.active_exercise}."
+            f"Great! You successfully completed your workout plan. Spectacular effort completing {total_reps} reps "
+            f"of {st.session_state.active_exercise}! Time to rest and recover."
         )
     else:
-        st.session_state.feedback_cue = f"Session stopped. Completed {total_reps} reps total."
+        st.session_state.feedback_cue = (
+            f"Session stopped! You completed {total_reps} reps of {st.session_state.active_exercise}. "
+            f"Don't worry, every single rep counts! Keep up the effort, stay consistent, and we will crush your target next time!"
+        )
+
+    # Play native and base64 speech feedback for workout conclusion
+    if st.session_state.get("voice_coaching", True):
+        try:
+            from services.coaching.groq_coach import speak_text_locally
+            speak_text_locally(st.session_state.feedback_cue)
+            
+            from services.coaching.text_to_speech import text_to_speech_base64
+            audio_b64 = text_to_speech_base64(st.session_state.feedback_cue)
+            if audio_b64:
+                st.session_state.voice_audio_base64 = audio_b64
+                st.session_state.audio_id = st.session_state.get("audio_id", 0) + 1
+        except Exception as e:
+            print(f"Failed to play session conclusion voice cue: {str(e)}")
 
 def stop_workout_session():
     """
-    User clicks stop: Cancel the workout, save whatever reps they did, and return to configurator.
+    User clicks stop: Conclude the active workout session. Dynamically determine success based on targets.
     """
-    finish_workout_session(completed_successfully=False)
+    total_reps = sum(s["completed_reps"] for s in st.session_state.set_history)
+    target_total = st.session_state.target_reps * st.session_state.target_sets
+    success = total_reps >= target_total
+    finish_workout_session(completed_successfully=success)

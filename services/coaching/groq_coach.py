@@ -2,7 +2,6 @@ import os
 import time
 import streamlit as st
 from dotenv import load_dotenv
-from groq import Groq
 from services.coaching.text_to_speech import text_to_speech_base64
 
 # Resolve absolute path to project root .env file
@@ -11,31 +10,7 @@ project_root = os.path.abspath(os.path.join(current_dir, "..", ".."))
 env_path = os.path.join(project_root, ".env")
 load_dotenv(env_path)
 
-# Safe API key retrieval (checks environment variables, then falls back to Streamlit secrets)
-API_KEY = os.getenv("groq_api_key") or os.getenv("GROQ_API_KEY")
-if not API_KEY:
-    try:
-        API_KEY = st.secrets.get("groq_api_key") or st.secrets.get("GROQ_API_KEY")
-    except Exception:
-        pass
-
-SYSTEM_PROMPT = """
-You are FIT-AI, an elite, highly encouraging personal AI Gym Trainer.
-The user just completed a repetition. Keep your coaching advice extremely brief, highly actionable, motivating, and conversational (MAXIMUM 15 words).
-
-You will be given:
-1. Intended Exercise: The exercise the user chose.
-2. Repetition State: Just completed Rep X of Y (Set A of B).
-3. Rep Performance Assessment: A list of biomechanical issues/warnings observed during this rep (or 'None' if it was a perfect rep).
-
-Your core coaching logic:
-- If 'Rep Performance Assessment' is 'None', congratulate them on a perfect, clean repetition and give them a quick motivational push (e.g., 'Perfect depth on that squat! Squeeze and keep going!').
-- If 'Rep Performance Assessment' contains posture errors (e.g., 'leaning forward', 'elbow flare', 'hips sagging'), give a quick, constructive correction for their next rep (e.g., 'You leaned forward on that last rep. Squeeze your core and keep chest high on the next one!').
-- If they completed the entire set, congratulate them and tell them to rest.
-- Never mention landmarks, coordinates, angles, code variables, or that you are an AI. 
-- Talk naturally as if you are standing right next to them in the gym. Speak in one concise sentence!
-"""
-
+# local rule-based caching config
 def query_groq_coach(
     exercise_name: str,
     current_set: int,
@@ -46,48 +21,127 @@ def query_groq_coach(
     angles_dict: dict
 ) -> str:
     """
-    Queries Groq's Llama 3.1 model to generate instant, context-aware training guidance upon rep completion.
+    Local rule-based coach feedback generator.
+    Replaces Groq API to provide instant, zero-latency, context-aware training guidance.
     """
-    if not API_KEY:
-        # Fallback to the original CV rule-based feedback cue if API key is not configured
-        errors_str = ", ".join(set(rep_errors)) if rep_errors else "Excellent form!"
-        return f"Rep completed. Errors: {errors_str}"
-
-    try:
-        client = Groq(api_key=API_KEY)
-        
-        # Prepare context payload for the model
-        errors_str = ", ".join(set(rep_errors)) if rep_errors else "None (Perfect form!)"
-        user_message = (
-            f"Intended Exercise: {exercise_name}\n"
-            f"Repetition State: Completed Rep {current_reps} of {target_reps} (Set {current_set} of {target_sets})\n"
-            f"Rep Performance Assessment: {errors_str}\n"
-            f"Joint Angles/Status: {angles_dict}\n"
-        )
-        
-        response = client.chat.completions.create(
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_message}
-            ],
-            model="llama-3.1-8b-instant",
-            max_tokens=40,
-            temperature=0.7,
-        )
-        
-        coaching_text = response.choices[0].message.content.strip()
-        
-        # Strip outer quotes if the model wrapped the response in quotes
-        if coaching_text.startswith('"') and coaching_text.endswith('"'):
-            coaching_text = coaching_text[1:-1].strip()
+    # Clean unique errors
+    unique_errors = list(set([e.strip() for e in rep_errors if e and e.strip()]))
+    errors_lower = [e.lower() for e in unique_errors]
+    
+    # 1. Workout / Set Completion logic
+    if current_reps >= target_reps:
+        if current_set >= target_sets:
+            extra_cues = [
+                "Target reached! Outstanding effort! Let's push for one extra bonus rep!",
+                "Goal achieved! Phenomenal strength! Show off and do one more pushup!",
+                "Target completed! Brilliant! Keep the momentum and do an extra repetition!",
+                "Target hit! Spectacular! Keep going, show your ultimate limits!",
+                "Target met! Unstoppable! Let's do another rep for good measure!"
+            ]
+            idx = current_reps % len(extra_cues)
+            return extra_cues[idx]
+        else:
+            return f"Set {current_set} completed! Awesome job. Take a quick rest, then get ready for set {current_set + 1}."
             
-        return coaching_text
+    # 2. Form Correction Logic (If there are errors)
+    if unique_errors:
+        err_str = " ".join(errors_lower)
+        ex_lower = exercise_name.lower()
         
+        # SQUATS
+        if "squat" in ex_lower:
+            if any(word in err_str for word in ["lean", "leaning", "forward"]):
+                return "Keep your chest proud and high on the next squat. Don't lean forward!"
+            elif any(word in err_str for word in ["depth", "deep", "low", "standing"]):
+                return "Go a bit lower on the next rep to get full depth and engage your glutes!"
+            elif any(word in err_str for word in ["knee", "cave", "inward"]):
+                return "Push your knees slightly outward as you squat down!"
+            else:
+                return "Slow down, stabilize your core, and check your squat form."
+                
+        # PUSH-UPS
+        elif "push" in ex_lower:
+            if any(word in err_str for word in ["sag", "hips", "low", "belly"]):
+                return "Squeeze your glutes and core! Keep your hips in a straight line on the next rep."
+            elif any(word in err_str for word in ["depth", "low", "chest"]):
+                return "Lower your chest a bit closer to the floor on the next push-up!"
+            elif any(word in err_str for word in ["elbow", "flare", "wide"]):
+                return "Keep your elbows tucked at a forty-five degree angle!"
+            else:
+                return "Engage your core, keep your body straight, and push up strong!"
+                
+        # BICEP CURLS
+        elif "bicep" in ex_lower or "curl" in ex_lower:
+            if any(word in err_str for word in ["swing", "momentum", "flare", "stability", "arm"]):
+                return "Lock your elbows to your sides! Avoid swinging your arms to lift the weight."
+            elif any(word in err_str for word in ["range", "partial", "stretch", "extension"]):
+                return "Ensure full range of motion. Lower the weight all the way down!"
+            else:
+                return "Squeeze your biceps hard at the peak, then control the descent!"
+                
+        # PLANK
+        elif "plank" in ex_lower:
+            if any(word in err_str for word in ["sag", "low", "hip", "hips"]):
+                return "Squeeze your abs and raise your hips slightly! Don't let them sag."
+            elif any(word in err_str for word in ["raise", "high", "pike"]):
+                return "Lower your hips to a perfectly flat, neutral alignment."
+            else:
+                return "Keep your neck relaxed, press through your elbows, and hold strong!"
+                
+        # LUNGES
+        elif "lunge" in ex_lower:
+            if any(word in err_str for word in ["knee", "front", "cave", "wobble"]):
+                return "Keep your front knee aligned over your ankle. Don't let it wobble!"
+            elif any(word in err_str for word in ["torso", "lean", "upright"]):
+                return "Keep your chest up and shoulders back on the next step!"
+            else:
+                return "Drop your hips straight down and push off your front heel!"
+                
+        # SHOULDER PRESS
+        elif "shoulder" in ex_lower or "press" in ex_lower:
+            if any(word in err_str for word in ["flare", "elbow", "wide"]):
+                return "Keep your elbows slightly forward to protect your shoulders!"
+            elif any(word in err_str for word in ["extension", "range", "short"]):
+                return "Press the weight all the way up to full elbow extension!"
+            else:
+                return "Control the weights as you lower them and press straight up!"
+                
+        # GENERAL FALLBACK FOR ERRORS
+        else:
+            first_err = unique_errors[0].replace("Warning:", "").replace("Form Warning:", "").strip()
+            return f"Watch your form on the next rep: {first_err}."
+
+    # 3. Motivational Perfect Rep Logic (If form was clean!)
+    perfect_cues = [
+        f"Perfect form on rep {current_reps}! Keep that exact motion going.",
+        f"Clean rep {current_reps}! Brilliant control, keep it up.",
+        "Spot on! Your joint alignment is absolutely beautiful.",
+        "Excellent pace! Squeeze at the peak and continue.",
+        "Beautiful rep! Stay focused and drive through.",
+        f"Rep {current_reps} solid! Keep pushing through this set!"
+    ]
+    
+    # Deterministic selection based on rep count
+    cue_idx = current_reps % len(perfect_cues)
+    return perfect_cues[cue_idx]
+
+def speak_text_locally(text: str):
+    """
+    Synthesizes and speaks text directly on the local machine speakers using the Windows native PowerShell System.Speech API.
+    Runs asynchronously in a detached subprocess to prevent UI freezing, and is 100% immune to browser/Streamlit lifecycle events.
+    """
+    import subprocess
+    # Escape single quotes and double quotes safely for PowerShell compatibility
+    safe_text = text.replace("'", "''").replace('"', '\\"')
+    cmd = [
+        "powershell",
+        "-Command",
+        f"Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak('{safe_text}')"
+    ]
+    try:
+        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception as e:
-        # Fallback to CV rule feedback if API fails or rate-limits
-        print(f"Groq API Error: {str(e)}")
-        errors_str = ", ".join(set(rep_errors)) if rep_errors else "Excellent form!"
-        return f"Rep completed. Errors: {errors_str}"
+        print(f"Local text-to-speech engine failed: {str(e)}")
 
 def trigger_coaching_audio(
     exercise_name: str,
@@ -148,6 +202,9 @@ def trigger_coaching_audio(
         if coaching_text:
             # Update session feedback cue if we got a new one to display on the Streamlit UI!
             st.session_state.feedback_cue = coaching_text
+            
+            # Speak natively through local system audio (100% immune to Streamlit DOM updates/reruns!)
+            speak_text_locally(coaching_text)
             
             # Convert to TTS (Base64)
             audio_b64 = text_to_speech_base64(coaching_text)

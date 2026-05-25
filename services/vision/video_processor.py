@@ -68,6 +68,8 @@ def process_uploaded_video(file_path, exercise_name, image_placeholder, status_p
                 output_segmentation_masks=False
             )
             st.session_state.mp_detector = vision.PoseLandmarker.create_from_options(options)
+            # Reset global timestamp counter when detector is re-created
+            st.session_state.mp_global_timestamp = 0
         except Exception as e:
             status_placeholder.error(f"Failed to load MediaPipe Pose model: {str(e)}")
             return 0, {}
@@ -112,7 +114,14 @@ def process_uploaded_video(file_path, exercise_name, image_placeholder, status_p
             h, w, _ = frame.shape
 
         # Calculate exact timestamp in milliseconds for MediaPipe video tracking
-        timestamp_ms = int((frame_index / fps) * 1000)
+        # We use a session state global counter that is guaranteed to be strictly monotonically increasing,
+        # even if a Streamlit rerun causes seeks, video restarts, or context switches.
+        if "mp_global_timestamp" not in st.session_state:
+            st.session_state.mp_global_timestamp = 0
+            
+        frame_duration_ms = max(1, int((1.0 / fps) * 1000))
+        st.session_state.mp_global_timestamp += frame_duration_ms
+        timestamp_ms = st.session_state.mp_global_timestamp
         
         # Convert frame color scheme BGR -> RGB for MediaPipe
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -143,35 +152,68 @@ def process_uploaded_video(file_path, exercise_name, image_placeholder, status_p
         display_frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         image_placeholder.image(display_frame_rgb, use_container_width=True)
         
-        # Render real-time progress banner below the canvas showing AI Coach Guideline
-        percentage = min(100, int((frame_index / total_frames) * 100)) if total_frames > 0 else 0
-        status_placeholder.markdown(f"""
-        <div style="background: rgba(0, 255, 204, 0.05); border: 1px solid rgba(0, 255, 204, 0.12); border-radius: 8px; padding: 12px; margin-top: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
-            <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(0, 255, 204, 0.1); padding-bottom: 8px; margin-bottom: 8px;">
-                <div style="font-size: 0.88rem; color: #00FFCC; font-weight: 700;">🤖 AI Biometrics Processing... {percentage}%</div>
-                <div style="font-size: 0.88rem; color: #ffffff; font-weight: 600;">Counted: <span style="color: #00FFCC;">{detector.reps} reps</span></div>
+        # Render real-time progress banner below the canvas showing AI Coach Guideline (Throttled to every 6 frames to prevent DOM queue clogging!)
+        if frame_index % 6 == 0 or frame_index == 1 or frame_index == total_frames:
+            percentage = min(100, int((frame_index / total_frames) * 100)) if total_frames > 0 else 0
+            status_placeholder.markdown(f"""
+            <div style="background: rgba(0, 255, 204, 0.05); border: 1px solid rgba(0, 255, 204, 0.12); border-radius: 8px; padding: 12px; margin-top: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+                <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(0, 255, 204, 0.1); padding-bottom: 8px; margin-bottom: 8px;">
+                    <div style="font-size: 0.88rem; color: #00FFCC; font-weight: 700;">🤖 AI Biometrics Processing... {percentage}%</div>
+                    <div style="font-size: 0.88rem; color: #ffffff; font-weight: 600;">Counted: <span style="color: #00FFCC;">{detector.reps} reps</span></div>
+                </div>
+                <div style="font-size: 0.88rem; color: #cbd5e1; font-weight: 400; display: flex; align-items: center; gap: 6px;">
+                    <span style="font-size: 1rem;">🎙️</span>
+                    <span><b>Coach Feedback:</b> "{st.session_state.get('feedback_cue', '')}"</span>
+                </div>
             </div>
-            <div style="font-size: 0.88rem; color: #cbd5e1; font-weight: 400; display: flex; align-items: center; gap: 6px;">
-                <span style="font-size: 1rem;">🎙️</span>
-                <span><b>Coach Feedback:</b> "{st.session_state.get('feedback_cue', '')}"</span>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
         
         # Synchronize angles into session state instantly so sidebar biometrics gauges move dynamically
         st.session_state.simulated_angles[exercise_name.lower().replace(" ", "_").replace("-", "_")] = final_angles
         
-        # Dynamically update the sidebar biometrics placeholder in real-time inside the frame-by-frame loop!
-        if "metrics_placeholder" in st.session_state and st.session_state.metrics_placeholder is not None:
-            try:
-                with st.session_state.metrics_placeholder.container():
-                    from services.ui.exercise_sidebar import render_exercise_metrics
-                    render_exercise_metrics(exercise_name, final_angles)
-            except Exception as e:
-                pass
-        
         # Always synchronize real-time posture feedback cue so that voice coach/UI reads it
         st.session_state.feedback_cue = detector.feedback
+
+        # Throttled Sidebar biometrics updates to reduce browser rendering workload by 90% and prevent UI lag!
+        if frame_index % 6 == 0 or frame_index == 1:
+            if "metrics_placeholder" in st.session_state and st.session_state.metrics_placeholder is not None:
+                try:
+                    with st.session_state.metrics_placeholder.container():
+                        from services.ui.exercise_sidebar import render_exercise_metrics
+                        render_exercise_metrics(exercise_name, final_angles)
+                except Exception as e:
+                    pass
+
+        # Draw initial progress and coaching feedback once at the start of the video
+        if frame_index == 1:
+            if "progress_placeholder" in st.session_state and st.session_state.progress_placeholder is not None:
+                try:
+                    with st.session_state.progress_placeholder.container():
+                        from services.ui.metrics.progress import render_progress_metric
+                        render_progress_metric(
+                            st.session_state.set_history, 
+                            st.session_state.current_set, 
+                            st.session_state.current_reps, 
+                            st.session_state.target_reps
+                        )
+                except Exception as e:
+                    pass
+
+            if "feedback_placeholder" in st.session_state and st.session_state.feedback_placeholder is not None:
+                try:
+                    with st.session_state.feedback_placeholder.container():
+                        st.markdown(f"""
+                        <div class="speech-box">
+                            <span style="font-size: 0.95rem; font-weight: 700; color: #00FFCC; display: flex; align-items: center; gap: 6px;">
+                                🎙️ AI Coach Cue
+                            </span>
+                            <p style="color: #cbd5e1; font-size: 0.85rem; font-weight: 300; margin: 6px 0 0 0; line-height: 1.4;">
+                                "{st.session_state.get('feedback_cue', '')}"
+                            </p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                except Exception as e:
+                    pass
 
         # Initialize current rep warnings list if not already present
         if "current_rep_warnings" not in st.session_state:
@@ -198,34 +240,51 @@ def process_uploaded_video(file_path, exercise_name, image_placeholder, status_p
             # Reset the rep warnings buffer for the next rep
             st.session_state.current_rep_warnings = []
 
-            # Query the Groq voice coach asynchronously in a background thread to prevent blocking/freezing the video playback loop!
-            import threading
-            
-            def run_coaching_voice_async(ex_name, curr_set, curr_reps, tgt_sets, tgt_reps, errors, angles, placeholder):
+            # Trigger native offline SAPI5 voice coaching feedback (completely immune to DOM updates and thread issues!)
+            try:
+                from services.coaching.groq_coach import trigger_coaching_audio
+                trigger_coaching_audio(
+                    exercise_name=exercise_name,
+                    current_set=st.session_state.current_set,
+                    current_reps=st.session_state.current_reps,
+                    target_sets=st.session_state.target_sets,
+                    target_reps=st.session_state.target_reps,
+                    rep_errors=rep_errors,
+                    angles_dict=final_angles
+                )
+            except Exception as e:
+                print(f"Voice coaching trigger failed: {str(e)}")
+
+            # Update progress placeholder dynamically upon rep completion
+            if "progress_placeholder" in st.session_state and st.session_state.progress_placeholder is not None:
                 try:
-                    from services.coaching.groq_coach import trigger_coaching_audio
-                    audio_b64 = trigger_coaching_audio(
-                        exercise_name=ex_name,
-                        current_set=curr_set,
-                        current_reps=curr_reps,
-                        target_sets=tgt_sets,
-                        target_reps=tgt_reps,
-                        rep_errors=errors,
-                        angles_dict=angles
-                    )
-                    if audio_b64:
-                        import base64
-                        audio_bytes = base64.b64decode(audio_b64)
-                        # Play voice feedback instantly using native Streamlit audio player with autoplay
-                        placeholder.audio(audio_bytes, format="audio/mp3", autoplay=True)
+                    with st.session_state.progress_placeholder.container():
+                        from services.ui.metrics.progress import render_progress_metric
+                        render_progress_metric(
+                            st.session_state.set_history, 
+                            st.session_state.current_set, 
+                            st.session_state.current_reps, 
+                            st.session_state.target_reps
+                        )
                 except Exception as e:
-                    print(f"Async voice coaching failed: {str(e)}")
-                    
-            threading.Thread(
-                target=run_coaching_voice_async,
-                args=(exercise_name, st.session_state.current_set, st.session_state.current_reps, st.session_state.target_sets, st.session_state.target_reps, rep_errors, final_angles, audio_placeholder),
-                daemon=True
-            ).start()
+                    pass
+
+            # Update feedback placeholder dynamically upon rep completion
+            if "feedback_placeholder" in st.session_state and st.session_state.feedback_placeholder is not None:
+                try:
+                    with st.session_state.feedback_placeholder.container():
+                        st.markdown(f"""
+                        <div class="speech-box">
+                            <span style="font-size: 0.95rem; font-weight: 700; color: #00FFCC; display: flex; align-items: center; gap: 6px;">
+                                🎙️ AI Coach Cue
+                            </span>
+                            <p style="color: #cbd5e1; font-size: 0.85rem; font-weight: 300; margin: 6px 0 0 0; line-height: 1.4;">
+                                "{st.session_state.get('feedback_cue', '')}"
+                            </p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                except Exception as e:
+                    pass
 
         # Keep track of the current frame index for seamless resuming across reruns
         st.session_state.video_frame_index = frame_index
