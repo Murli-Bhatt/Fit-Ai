@@ -426,10 +426,19 @@ else:
     import platform
     if platform.system() != 'Windows':
         if st.session_state.get("voice_audio_base64") and st.session_state.get("audio_id", 0) != st.session_state.get("last_played_audio_id", -1):
+            audio_id = st.session_state.audio_id
+            b64_data = st.session_state.voice_audio_base64
+            
+            # Programmatic Audio playback inside a hidden iframe using the browser's background audio thread.
+            # Using programmatic browser Audio play in an onload event ensures playback survives
+            # subsequent Streamlit React DOM refreshes and button clicks without cutting off!
             audio_html = f"""
-            <audio autoplay="true" style="display:none;">
-                <source src="data:audio/mp3;base64,{st.session_state.voice_audio_base64}" type="audio/mp3">
-            </audio>
+            <iframe src="about:blank" style="display:none;" onload="
+                try {{
+                    var snd = new Audio('data:audio/mp3;base64,{b64_data}');
+                    snd.play().catch(function(e) {{ console.log('Audio playback blocked:', e); }});
+                }} catch(e) {{ console.log(e); }}
+            "></iframe>
             """
             st.markdown(audio_html, unsafe_allow_html=True)
-            st.session_state.last_played_audio_id = st.session_state.audio_id
+            st.session_state.last_played_audio_id = audio_id
