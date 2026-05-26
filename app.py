@@ -425,20 +425,19 @@ else:
     # HTML5 Browser Audio Autoplay Bridge (Crucial fallback for Streamlit Cloud Linux/Docker deployments!)
     import platform
     if platform.system() != 'Windows':
-        if st.session_state.get("voice_audio_base64") and st.session_state.get("audio_id", 0) != st.session_state.get("last_played_audio_id", -1):
-            audio_id = st.session_state.audio_id
-            b64_data = st.session_state.voice_audio_base64
+        if st.session_state.get("voice_audio_base64"):
+            is_new = st.session_state.get("audio_id", 0) != st.session_state.get("last_played_audio_id", -1)
+            autoplay_attr = 'autoplay="true"' if is_new else ''
             
-            # Programmatic Audio playback inside a hidden iframe using the browser's background audio thread.
-            # Using programmatic browser Audio play in an onload event ensures playback survives
-            # subsequent Streamlit React DOM refreshes and button clicks without cutting off!
+            # Persistent Audio tag: It stays in the DOM during button click reruns (preventing cut-off),
+            # but only appends the 'autoplay' attribute on new speech cues (preventing loops/restarts).
+            # This is 100% compliant with Streamlit Cloud's iframe sandboxing policies!
             audio_html = f"""
-            <iframe src="about:blank" style="display:none;" onload="
-                try {{
-                    var snd = new Audio('data:audio/mp3;base64,{b64_data}');
-                    snd.play().catch(function(e) {{ console.log('Audio playback blocked:', e); }});
-                }} catch(e) {{ console.log(e); }}
-            "></iframe>
+            <audio {autoplay_attr} style="display:none;">
+                <source src="data:audio/mp3;base64,{st.session_state.voice_audio_base64}" type="audio/mp3">
+            </audio>
             """
             st.markdown(audio_html, unsafe_allow_html=True)
-            st.session_state.last_played_audio_id = audio_id
+            
+            if is_new:
+                st.session_state.last_played_audio_id = st.session_state.audio_id
