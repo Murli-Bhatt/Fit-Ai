@@ -121,6 +121,11 @@ def process_uploaded_video(file_path, exercise_name, image_placeholder, status_p
             
         frame_duration_ms = max(1, int((1.0 / fps) * 1000))
         st.session_state.mp_global_timestamp += frame_duration_ms
+        
+        # Skip odd frames to double the processing speed of uploaded videos on cloud CPU!
+        if frame_index % 2 != 0:
+            continue
+            
         timestamp_ms = st.session_state.mp_global_timestamp
         
         # Convert frame color scheme BGR -> RGB for MediaPipe
@@ -148,9 +153,11 @@ def process_uploaded_video(file_path, exercise_name, image_placeholder, status_p
             cv2.rectangle(frame, (10, h - 50), (w - 10, h - 10), (0, 0, 150), -1)
             cv2.putText(frame, f"Analysis Error: {str(e)[:50]}", (20, h - 25), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
 
-        # Convert back to RGB for Streamlit rendering
-        display_frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        image_placeholder.image(display_frame_rgb, use_container_width=True)
+        # Throttling WebSocket rendering: Only send every 4th frame (i.e. every 2nd of the processed frames) to the browser to prevent network congestion
+        if frame_index % 4 == 0 or frame_index == 2 or frame_index == total_frames:
+            # Convert back to RGB for Streamlit rendering
+            display_frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            image_placeholder.image(display_frame_rgb, use_container_width=True)
         
         # Render real-time progress banner below the canvas showing AI Coach Guideline (Throttled to every 6 frames to prevent DOM queue clogging!)
         if frame_index % 6 == 0 or frame_index == 1 or frame_index == total_frames:

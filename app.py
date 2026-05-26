@@ -202,7 +202,7 @@ else:
                                     </div>
                                     """, unsafe_allow_html=True)
                             
-                            # Detect reps completed (triggers SQLite save, voice coaching query, and page refresh to trigger autoplay)
+                            # Detect reps completed (triggers SQLite save, voice coaching query)
                             if video_processor.new_rep_detected:
                                 video_processor.new_rep_detected = False
                                 
@@ -228,25 +228,42 @@ else:
                                 if audio_b64:
                                     st.session_state.voice_audio_base64 = audio_b64
                                     st.session_state.audio_id = st.session_state.get("audio_id", 0) + 1
+
+                            # Live camera coaching feedback banner displayed under the video stream (inside fragment to sync in real-time without reruns!)
+                            st.markdown(f"""
+                            <div style="background: rgba(0, 255, 204, 0.05); border: 1px solid rgba(0, 255, 204, 0.12); border-radius: 8px; padding: 12px; margin-top: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+                                <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(0, 255, 204, 0.1); padding-bottom: 8px; margin-bottom: 8px;">
+                                    <div style="font-size: 0.88rem; color: #00FFCC; font-weight: 700;">🎥 Live AI Biometrics Active</div>
+                                    <div style="font-size: 0.88rem; color: #ffffff; font-weight: 600;">Active Set: <span style="color: #00FFCC;">{st.session_state.current_reps}/{st.session_state.target_reps} reps (Set {st.session_state.current_set})</span></div>
+                                </div>
+                                <div style="font-size: 0.88rem; color: #cbd5e1; font-weight: 400; display: flex; align-items: center; gap: 6px;">
+                                    <span style="font-size: 1rem;">🎙️</span>
+                                    <span><b>Coach Feedback:</b> "{st.session_state.get('feedback_cue', '')}"</span>
+                                </div>
+                            </div>
+                            """, unsafe_allow_html=True)
+
+                            # HTML5 Browser Audio Autoplay Bridge inside fragment (so that it plays on new reps without full page rerun)
+                            import platform
+                            if platform.system() != 'Windows':
+                                if st.session_state.get("voice_audio_base64"):
+                                    is_new = st.session_state.get("audio_id", 0) != st.session_state.get("last_played_audio_id", -1)
+                                    autoplay_attr = 'autoplay="true"' if is_new else ''
                                     
-                                st.rerun()
+                                    # Persistent Audio tag: It stays in the DOM during fragment updates,
+                                    # but only appends the 'autoplay' attribute on new speech cues.
+                                    audio_html = f"""
+                                    <audio {autoplay_attr} style="display:none;">
+                                        <source src="data:audio/mp3;base64,{st.session_state.voice_audio_base64}" type="audio/mp3">
+                                    </audio>
+                                    """
+                                    st.markdown(audio_html, unsafe_allow_html=True)
+                                    
+                                    if is_new:
+                                        st.session_state.last_played_audio_id = st.session_state.audio_id
 
                         # Call the fragment immediately
                         live_sync_fragment(ctx.video_processor)
-
-                        # Live camera coaching feedback banner displayed under the video stream
-                        st.markdown(f"""
-                        <div style="background: rgba(0, 255, 204, 0.05); border: 1px solid rgba(0, 255, 204, 0.12); border-radius: 8px; padding: 12px; margin-top: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
-                            <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(0, 255, 204, 0.1); padding-bottom: 8px; margin-bottom: 8px;">
-                                <div style="font-size: 0.88rem; color: #00FFCC; font-weight: 700;">🎥 Live AI Biometrics Active</div>
-                                <div style="font-size: 0.88rem; color: #ffffff; font-weight: 600;">Active Set: <span style="color: #00FFCC;">{st.session_state.current_reps}/{st.session_state.target_reps} reps (Set {st.session_state.current_set})</span></div>
-                            </div>
-                            <div style="font-size: 0.88rem; color: #cbd5e1; font-weight: 400; display: flex; align-items: center; gap: 6px;">
-                                <span style="font-size: 1rem;">🎙️</span>
-                                <span><b>Coach Feedback:</b> "{st.session_state.get('feedback_cue', '')}"</span>
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
             else:
                 # 📤 Upload Workout Video Mode
                 st.markdown(f"### 📤 Upload Workout Video: `{exercise_name}`")
@@ -424,7 +441,7 @@ else:
 
     # HTML5 Browser Audio Autoplay Bridge (Crucial fallback for Streamlit Cloud Linux/Docker deployments!)
     import platform
-    if platform.system() != 'Windows':
+    if platform.system() != 'Windows' and not st.session_state.get("camera_active", False):
         if st.session_state.get("voice_audio_base64"):
             is_new = st.session_state.get("audio_id", 0) != st.session_state.get("last_played_audio_id", -1)
             autoplay_attr = 'autoplay="true"' if is_new else ''
